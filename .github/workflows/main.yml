@@ -27,7 +27,7 @@ jobs:
       run: dotnet publish stem-tools/stem-tools.csproj -c Release -o release
       
     - name: change base-tag in index.html from / to stem-tools
-      run : sed -i ‘s/<base href=”\/” \/>/<base href=”\/stem-tools\/” \/>/g’ release/wwwroot/index.html
+      run : sed -i .bak 's/<base href=”\/” \/>/<base href=”\/stem-tools\/” \/>/g' release/wwwroot/index.html
     
     - name: Copy index.html to 404.html to serve the same file when a file is not found
       run : cp release/wwwroot/index.html release/wwwroot/404.html
