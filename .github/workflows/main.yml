@@ -14,7 +14,7 @@ jobs:
     
     # Uses GitHub’s checkout action to check out code from the master branch
     - name: checkout 
-    - uses: actions/checkout@v2
+      uses: actions/checkout@v2
     
     - name: Setup .NET
       uses: actions/setup-dotnet@v2.0.0
@@ -33,7 +33,7 @@ jobs:
 
     # Add the .nojekyll file to tell GitHub pages to not treat this as a Jekyll project. (Allow files and folders starting with an underscore)
     - name: Add .nojekyll file
-    - run : touch release/wwwroot/.nojekyll
+      run : touch release/wwwroot/.nojekyll
     
     
     - name: Deploy to GitHub Pages
