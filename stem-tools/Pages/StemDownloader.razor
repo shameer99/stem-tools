@@ -151,7 +151,9 @@ else
     async Task<IEnumerable<string>> GetStemUrls(Track track)
     {
         const string codec = "mp3";
+        Console.WriteLine(SerialNumber);
         var requestUrl = $"https://api.stemplayer.com/content/stems?track_id={track.Id}&version={track.Version}&codec={codec}&device_id={SerialNumber}";
+        Console.WriteLine(requestUrl);
         var responseString = await Http.GetStringAsync(requestUrl);
         dynamic responseJson = JObject.Parse(responseString);
         var data = responseJson.data;
