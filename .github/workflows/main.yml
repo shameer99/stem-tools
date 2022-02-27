@@ -24,7 +24,7 @@ jobs:
     
       
     - name: publish project
-      run: dotnet publish stem-tools.csproj -c Release -o release –nologo
+      run: dotnet publish stem-tools/stem-tools.csproj -c Release -o release
       
     - name: change base-tag in index.html from / to stem-tools
       run : sed -i ‘s/<base href=”\/” \/>/<base href=”\/stem-tools\/” \/>/g’ release/wwwroot/index.html
