@@ -2,8 +2,8 @@ name: Deploy to GitHub pages
 #thanks https://www.syncfusion.com/faq/blazor/host-and-deploy/how-do-i-deploy-a-blazor-webassembly-application-to-github-pages
 # Run workflow on every push to the master branch
 on:
-push:
-branches: [ master ]
+  push:
+    branches: [ master ]
 
 jobs:
   deploy-to-github-pages:
