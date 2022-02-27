@@ -1,0 +1,45 @@
+name: Deploy to GitHub pages
+#thanks https://www.syncfusion.com/faq/blazor/host-and-deploy/how-do-i-deploy-a-blazor-webassembly-application-to-github-pages
+# Run workflow on every push to the master branch
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  deploy-to-github-pages:
+    # Use Ubuntu-latest image to run steps on
+    runs-on: ubuntu-latest
+    
+    steps:
+    
+    # Uses GitHub’s checkout action to check out code from the master branch
+    - name: checkout 
+      uses: actions/checkout@v2
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2.0.0
+      with:
+        dotnet-version: 6.0.x
+    
+      
+    - name: publish project
+      run: dotnet publish stem-tools/stem-tools.csproj -c Release -o release
+      
+    - name: change base-tag in index.html from / to stem-tools
+      run : sed -i .bak 's~<base href=”\/” \/>~<base href=”\/stem-tools\/” \/>~g' release/wwwroot/index.html
+    
+    - name: Copy index.html to 404.html to serve the same file when a file is not found
+      run : cp release/wwwroot/index.html release/wwwroot/404.html
+
+    # Add the .nojekyll file to tell GitHub pages to not treat this as a Jekyll project. (Allow files and folders starting with an underscore)
+    - name: Add .nojekyll file
+      run : touch release/wwwroot/.nojekyll
+    
+    
+    - name: Deploy to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@v4.2.5
+      with:
+        branch: gh-pages
+        folder: release/wwwroot
+
