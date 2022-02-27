@@ -1,0 +1,170 @@
+@page "/StemSplitter"
+@using Newtonsoft.Json.Linq
+@using System.Diagnostics
+@inject IJSRuntime JsRuntime
+@inject HttpClient Http
+
+
+<h3>StemSplitter</h3>
+<p>@Status</p>
+
+<InputFile id="upload" OnChange="OnFileSelected"></InputFile>
+
+@if (Stems.Any())
+{
+    <ul>
+        @foreach (var stem in Stems)
+        {
+            <li>
+                <a href="@stem.Url"><p>@stem.Name</p></a>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+
+    private string Status { get; set; } = "init";
+    private IEnumerable<DownloadableStem> Stems { get; set; } = Enumerable.Empty<DownloadableStem>();
+    
+    private async Task<AudioUpload?> SendAudioUploadRequest()
+    {
+        Status = "sending audio upload request";
+
+        //todo we can def do this in .net
+        var resp = await JsRuntime.InvokeAsync<string>("audioUploadRequest");
+        if (resp.StartsWith("error"))
+        {
+            Status = resp;
+            return null;
+        }
+
+        var respJson = JObject.Parse(resp);
+
+        var data = respJson["data"];
+        Debug.Assert(data is not null);
+
+        var audioFileId = data["audio_file_id"];
+        var uploadUrl = data["upload_url"];
+        if (audioFileId is null || uploadUrl is null)
+        {
+            Status = "upload pending";
+            Status = "could not parse json";
+            return null;
+        }
+        
+        Status = "requested upload." +
+                 $"\nid={audioFileId}" +
+                 $"\nurl={uploadUrl}";
+
+        return new AudioUpload(audioFileId.ToString(), uploadUrl.ToString());
+    }
+
+    private class AudioUpload
+    {
+        public AudioUpload(string fileId, string uploadUrl)
+        {
+            FileId = fileId;
+            UploadUrl = uploadUrl;
+        }
+
+        public string FileId { get; }
+
+        public string UploadUrl { get; }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs arg)
+    {
+        var audioUpload = await SendAudioUploadRequest();
+        if (audioUpload is null)
+        {
+            return;
+        }
+
+        Status = "uploading";
+        await UploadTrack(audioUpload.UploadUrl);
+        Status = "uploaded";
+        
+        var trackId = await AddTrack(audioUpload);
+        
+        if (trackId is null)
+        {
+            Status = "add track failed";
+            return;
+        }
+
+        Stems = await GetStemUrls(trackId);
+        Status = Stems.Any() ? "success" : "failed to get stems";
+    }
+
+    public class DownloadableStem
+    {
+        public DownloadableStem(string name, string url)
+        {
+            Name = name;
+            Url = url;
+        }
+
+        public string Url { get; }
+
+        public string Name { get; }
+    }
+    private async Task<IEnumerable<DownloadableStem>> GetStemUrls(string trackId)
+    {
+        var stemsUrls = new List<DownloadableStem>();
+        var requestUrl = $"https://api.stemplayer.com/tracks/{trackId}";
+        while (!stemsUrls.Any())
+        {
+            Status = "checking for stems";
+            var resp = await Http.GetStringAsync(requestUrl);
+            var respJo = JObject.Parse(resp);
+            var status = respJo["data"]?["status"];
+            if (status is null)
+            {
+                break;
+            }
+            if (status.ToString().Equals("pending"))
+            {
+                Status = "stems not ready";
+                await Task.Delay(1000);
+                continue;
+            }
+            
+            var stemsJo = respJo["data"]?["stems"];
+            if (stemsJo is null)
+            {
+                break;
+            }
+            var stemNames = new List<string>() {"bass", "vocals", "other", "drums"};
+            foreach(var stemName in stemNames)
+            {
+                stemsUrls.Add(new(stemName, stemsJo[stemName]!.ToString()));
+            }
+        }
+        return stemsUrls;
+    }
+
+    private async Task<string?> AddTrack(AudioUpload audioUpload)
+    {
+        var body = $@"{{""audio_file_id"":""{audioUpload.FileId}"",""stem_codec"":""mp3""}}";
+        var resp = await Http.PostAsync("https://api.stemplayer.com/tracks", new StringContent(body));
+        var respString = await resp.Content.ReadAsStringAsync();
+        Status = respString;
+
+        var respJo = JObject.Parse(respString);
+        var data = respJo["data"];
+        var trackId = data?["id"];
+        return trackId?.ToString();
+    }
+
+    private async Task UploadTrack(string uploadUrl)
+    {
+    //this might be tougher to do in .net
+        var success = await JsRuntime.InvokeAsync<bool>("uploadAudio", uploadUrl);
+        if (!success)
+        {
+            Status = "js failed to upload";
+        }
+    }
+
+}
