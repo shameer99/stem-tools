@@ -7,30 +7,23 @@
 
 <label for="serial_number">Serial Number: </label>
 <input type="text" value="@SerialNumber" @oninput="OnSerialNumberChanged" id="serial_number" />
-@if (!Tracks.Any())
-{
-    <p>
-        <em>Loading...</em>
-    </p>
-    
-}
-else
+@if (Tracks.Any())
 {
     <table>
         <thead>
-            <tr>
-                <style>
+        <tr>
+            <style>
                     thead > tr > td {
                         text-align: center;
                         font-weight: bold;
                     }
                 </style>
-                <td>Album</td>
-                <td>Track</td>
-                <td>Artists</td>
-                <td>Version</td>
-                <td>Download Stems</td>
-            </tr>
+            <td>Album</td>
+            <td>Track</td>
+            <td>Artists</td>
+            <td>Version</td>
+            <td>Download Stems</td>
+        </tr>
         </thead>
         <tbody>
         @foreach (var track in Tracks)
@@ -40,7 +33,7 @@ else
                 <td style="text-align:center">@track.Title</td>
                 <td style="text-align:center">@string.Join(", ", track.Artists)</td>
                 <td>
-                   <input @bind="@track.Version"/>
+                    <input @bind=@track.Version/>
                 </td>
                 <td style="text-align:center">
                     @if (IsSerialNumberValid)
@@ -53,15 +46,41 @@ else
                     {
                         <button disabled>↓</button>
                     }
-                
+
                 </td>
             </tr>
         }
         </tbody>
     </table>
 }
+else
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
 
 @code {
+    public class Track
+    {
+        public Track(string title, string[] artists, string albumTitle, string id, string version)
+        {
+            Title = title;
+            Artists = artists;
+            AlbumTitle = albumTitle;
+            Id = id;
+            Version = version;
+        }
+
+        public string Title { get; }
+        public string[] Artists { get; }
+        public string AlbumTitle { get; }
+        public string Id { get; }
+        public string Version { get; set; }
+
+        public override string ToString() => $"{Title} by {string.Join(", ", Artists)}";
+    }
+
     List<Track> Tracks { get; } = new();
 
     private string? SerialNumber { get; set; }
@@ -72,9 +91,7 @@ else
     {
         var sn = e.Value?.ToString();
 
-        Console.WriteLine("isDecimal: " + decimal.TryParse(sn, out _));
         IsSerialNumberValid = decimal.TryParse(sn, out _) && sn.Length == 24;
-        Console.WriteLine("isvalid: " + IsSerialNumberValid);
         if (IsSerialNumberValid)
         {
             await JsRuntime.InvokeVoidAsync("localStorage.setItem", "sn", sn);
@@ -101,31 +118,9 @@ else
                 JArray artistsJArray = track.metadata.artists;
                 var artists = artistsJArray.Select(j => j.ToString()).ToArray();
                 Tracks.Add(new Track(title, artists, albumTitle, id, version));
-              
             }
         }
         
-    }
-
-    public class Track
-    {
-
-        public Track(string title, string[] artists, string albumTitle, string id, string version)
-        {
-            Title = title;
-            Artists = artists;
-            AlbumTitle = albumTitle;
-            Id = id;
-            Version = version;
-        }
-
-        public string Title { get; }
-        public string[] Artists { get; }
-        public string AlbumTitle { get; }
-        public string Id { get; }
-        public string Version { get; set; }
-
-        public override string ToString() => $"{Title} by {string.Join(", ", Artists)}";
     }
     
     async Task DownloadStems(Track track)
@@ -141,11 +136,6 @@ else
 
         }
    
-    }
-
-    async Task JsAlert(string message)
-    {
-        await JsRuntime.InvokeVoidAsync("alert", message);
     }
 
     async Task<IEnumerable<string>> GetStemUrls(Track track)
