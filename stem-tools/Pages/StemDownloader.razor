@@ -17,7 +17,7 @@
                         text-align: center;
                         font-weight: bold;
                     }
-                </style>
+            </style>
             <td>Album</td>
             <td>Track</td>
             <td>Artists</td>
@@ -85,7 +85,7 @@ else
 
     private string? SerialNumber { get; set; }
 
-    private bool IsSerialNumberValid { get; set; } = true;
+    private bool IsSerialNumberValid { get; set; }
 
     private async Task OnSerialNumberChanged(ChangeEventArgs e)
     {
@@ -95,13 +95,17 @@ else
         if (IsSerialNumberValid)
         {
             await JsRuntime.InvokeVoidAsync("localStorage.setItem", "sn", sn);
+            SerialNumber = sn;
         }
+        Console.WriteLine("serial number changed");
+        Console.WriteLine(SerialNumber);
     }
 
     protected override async Task OnInitializedAsync()
     {
-        Console.WriteLine("hello world");
         SerialNumber = await JsRuntime.InvokeAsync<string>("localStorage.getItem", "sn");
+        IsSerialNumberValid = decimal.TryParse(SerialNumber, out _) && SerialNumber.Length == 24;
+        
         var albumsResponseString = await Http.GetStringAsync("https://api.stemplayer.com/content/albums");
         dynamic responseJson = JObject.Parse(albumsResponseString);
         var data = responseJson.data;
