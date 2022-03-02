@@ -3,55 +3,39 @@
 @inject HttpClient Http
 @inject IJSRuntime JsRuntime
 
-<h3>Stems</h3>
+<MudText Typo="Typo.h3" GutterBottom="true">Download Stems</MudText>
+<MudText Class="mb-8">This site does not host any content. Calls are made to <MudLink Href="https://api.stemplayer.com">api.stemplayer.com</MudLink> to retrieve data.</MudText>
 
-<label for="serial_number">Serial Number: </label>
-<input type="text" value="@SerialNumber" @oninput="OnSerialNumberChanged" id="serial_number" />
+<MudTextField T="string"
+              Variant="Variant.Outlined"
+              Immediate="true"
+              Label="Serial Number"
+              Required="true"
+              @bind-Value="SerialNumber"
+              Validation="@(new Func<string, IEnumerable<string>>(ValidateSerialNumber))"/>
+<br/>
 @if (Tracks.Any())
 {
-    <table>
-        <thead>
-        <tr>
-            <style>
-                    thead > tr > td {
-                        text-align: center;
-                        font-weight: bold;
-                    }
-            </style>
-            <td>Album</td>
-            <td>Track</td>
-            <td>Artists</td>
-            <td>Version</td>
-            <td>Download Stems</td>
-        </tr>
-        </thead>
-        <tbody>
-        @foreach (var track in Tracks)
+    <MudText Typo="Typo.h5">Albums:</MudText>
+    <MudExpansionPanels>
+        @foreach (var album in Tracks.Select(t => t.AlbumTitle).Distinct())
         {
-            <tr>
-                <td style="text-align:center">@track.AlbumTitle</td>
-                <td style="text-align:center">@track.Title</td>
-                <td style="text-align:center">@string.Join(", ", track.Artists)</td>
-                <td>
-                    <input @bind=@track.Version/>
-                </td>
-                <td style="text-align:center">
-                    @if (IsSerialNumberValid)
+            <MudExpansionPanel Text="@album">
+                <MudExpansionPanels>
+                    @foreach (var track in Tracks.Where(t => t.AlbumTitle.Equals(album)))
                     {
-                        <button onclick="@(async () => await DownloadStems(track))">
-                            ↓
-                        </button>
+                        <MudExpansionPanel Text="@track.ToString()">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@track.DownloadBass">Download Bass</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@track.DownloadVocals">Download Vocals</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@track.DownloadOther">Download Other</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@track.DownloadDrums">Download Drums</MudButton>
+                        </MudExpansionPanel>
                     }
-                    else
-                    {
-                        <button disabled>↓</button>
-                    }
+                </MudExpansionPanels>
+            </MudExpansionPanel>
 
-                </td>
-            </tr>
         }
-        </tbody>
-    </table>
+    </MudExpansionPanels>
 }
 else
 {
@@ -63,13 +47,21 @@ else
 @code {
     public class Track
     {
-        public Track(string title, string[] artists, string albumTitle, string id, string version)
+        private readonly Func<Track, StemType, Task> _downloadStemFunc;
+
+        private Track(string title, string[] artists, string albumTitle, string id, string version, Func<Track, StemType, Task> downloadStemFunc)
         {
+            _downloadStemFunc = downloadStemFunc;
             Title = title;
             Artists = artists;
             AlbumTitle = albumTitle;
             Id = id;
             Version = version;
+        }
+
+        public static Track CreateInstance(string title, string[] artists, string albumTitle, string id, string version, Func<Track, StemType, Task> downloadStemFunc)
+        {
+            return new Track(title, artists, albumTitle, id, version, downloadStemFunc);
         }
 
         public string Title { get; }
@@ -79,33 +71,20 @@ else
         public string Version { get; set; }
 
         public override string ToString() => $"{Title} by {string.Join(", ", Artists)}";
+
+        public Task DownloadBass() => _downloadStemFunc(this, StemType.Bass);
+        public Task DownloadVocals() => _downloadStemFunc(this, StemType.Vocals);
+        public Task DownloadOther() => _downloadStemFunc(this, StemType.Other);
+        public Task DownloadDrums() => _downloadStemFunc(this, StemType.Drums);
     }
 
     List<Track> Tracks { get; } = new();
 
-    private string? SerialNumber { get; set; }
-
-    private bool IsSerialNumberValid { get; set; }
-
-    private async Task OnSerialNumberChanged(ChangeEventArgs e)
-    {
-        var sn = e.Value?.ToString();
-
-        IsSerialNumberValid = decimal.TryParse(sn, out _) && sn.Length == 24;
-        if (IsSerialNumberValid)
-        {
-            await JsRuntime.InvokeVoidAsync("localStorage.setItem", "sn", sn);
-            SerialNumber = sn;
-        }
-        Console.WriteLine("serial number changed");
-        Console.WriteLine(SerialNumber);
-    }
+    private string SerialNumber { get; set; } = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
         SerialNumber = await JsRuntime.InvokeAsync<string>("localStorage.getItem", "sn");
-        IsSerialNumberValid = decimal.TryParse(SerialNumber, out _) && SerialNumber.Length == 24;
-        
         var albumsResponseString = await Http.GetStringAsync("https://api.stemplayer.com/content/albums");
         dynamic responseJson = JObject.Parse(albumsResponseString);
         var data = responseJson.data;
@@ -121,25 +100,35 @@ else
                 string title = track.metadata.title;
                 JArray artistsJArray = track.metadata.artists;
                 var artists = artistsJArray.Select(j => j.ToString()).ToArray();
-                Tracks.Add(new Track(title, artists, albumTitle, id, version));
+                Tracks.Add(Track.CreateInstance(title, artists, albumTitle, id, version, DownloadStem));
             }
         }
         
     }
-    
-    async Task DownloadStems(Track track)
+
+    public enum StemType
     {
-        var urls = (await GetStemUrls(track)).ToArray();
+        Bass,
+        Vocals,
+        Other,
+        Drums
+    }
 
-        for (int i = 0; i < urls.Length; i++)
+    async Task DownloadStem(Track track, StemType stemType)
+    {
+        var isSerialNumberValid = Decimal.TryParse(SerialNumber, out _) && SerialNumber.Length == 24;
+        if (!isSerialNumberValid)
         {
-            var respData = await Http.GetStreamAsync(urls[i]);
-            using var streamRef = new DotNetStreamReference(stream: respData);
-
-            await JsRuntime.InvokeVoidAsync("downloadFileFromStream",  track.Title + $"_{i+1}.mp3", streamRef);
-
+            await JsRuntime.InvokeVoidAsync("alert", "invalid serial number");
+            return;
         }
-   
+        var urls = (await GetStemUrls(track)).ToArray();
+        var index = (int)stemType;
+        var respData = await Http.GetStreamAsync(urls[index]);
+        using var streamRef = new DotNetStreamReference(stream: respData);
+
+        await JsRuntime.InvokeVoidAsync("downloadFileFromStream",  track.Title + $"_{index+1}.mp3", streamRef);
+        await JsRuntime.InvokeVoidAsync("localStorage.setItem", "sn", SerialNumber);
     }
 
     async Task<IEnumerable<string>> GetStemUrls(Track track)
@@ -158,4 +147,23 @@ else
         }
         return stemUrls;
     }
+    
+    private IEnumerable<string> ValidateSerialNumber(string arg)
+    {
+
+        if (string.IsNullOrEmpty(arg))
+        {
+            yield return "Serial number must be provided to download/play stems.";
+        }
+        
+        if (!decimal.TryParse(arg, out _))
+        {
+            yield return "Serial Number must be numeric.";
+        }
+        if (arg.Length != 24)
+        {
+            yield return "Serial number is expected to be 24 digits";
+        }
+    }
+
 }
